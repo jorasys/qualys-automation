@@ -127,7 +127,7 @@ def display_text_menu(scan_options):
                 break
             
             # Parse de la sélection
-            selected_indices = set()
+            selected_indices = set();
             parts = user_input.split(',')
             
             for part in parts:
@@ -148,7 +148,7 @@ def display_text_menu(scan_options):
             
             selected_scans = [scan_options[i-1] for i in valid_indices]
             print(f"✅ {len(selected_scans)} scan(s) sélectionné(s)")
-            break
+            break;
             
         except ValueError:
             print("❌ Format invalide. Utilisez des numéros, plages (1-5) ou 'all'")
@@ -182,6 +182,7 @@ def create_reports_from_selected_scans(api, selected_scans):
     """
     Crée des rapports PDF et CSV pour tous les scans sélectionnés
     """
+    from config import REPORT_CONFIGS
     if not selected_scans:
         print("❌ Aucun scan sélectionné pour la création de rapports")
         return []
@@ -190,82 +191,64 @@ def create_reports_from_selected_scans(api, selected_scans):
     print("📊 CRÉATION DES RAPPORTS POUR LES SCANS SÉLECTIONNÉS")
     print("=" * 80)
     
-    # Configuration des templates (depuis votre collection Postman)
-    report_configs = [
-        {
-            'template_id': '92297436',
-            'output_format': 'pdf',
-            'description': 'Rapport standard PDF'
-        },
-        {
-            'template_id': '92297455',  # Vous aviez mentionné 92297455 pour CSV
-            'output_format': 'csv',
-            'description': 'Rapport CSV'
-        }
-    ]
-    
+    report_configs = REPORT_CONFIGS
     created_reports = []
     total_reports = len(selected_scans) * len(report_configs)
     current_report = 0
-    
+
+    created_reports = []
     for scan in selected_scans:
         scan_id = scan['scan_id']
         scan_title = scan['title']
         scan_date = scan['formatted_date']
-        
         print(f"\n🔄 Traitement du scan: [{scan_date}] {scan_title}")
         print(f"   ID: {scan_id}")
-        print("-" * 60)
-        
         scan_reports = {
             'scan_info': scan,
             'reports': []
         }
-        
-        for config in report_configs:
-            current_report += 1
-            progress = f"({current_report}/{total_reports})"
-            
-            # Génération du titre du rapport
-            # report_title = f"{scan_title}_{scan_date.replace('/', '-').replace(' ', '_').replace(':', '-')}_{config['output_format']}"
-            report_title = scan_title
-
-            print(f"   📄 {progress} Création {config['description']}...")
-            
-            report_id = api.create_report_scanbased(
-                scan_id=scan_id,
-                template_id=config['template_id'],
-                output_format=config['output_format'],
-                report_title=report_title
-            )
-            
-            if report_id:
-                report_info = {
-                    'report_id': report_id,
-                    'template_id': config['template_id'],
-                    'output_format': config['output_format'],
-                    'report_title': report_title,
-                    'description': config['description'],
-                    'status': 'created'
-                }
-                scan_reports['reports'].append(report_info)
-                print(f"   ✅ {config['description']} créé: {report_id}")
-            else:
-                print(f"   ❌ Échec de création du {config['description']}")
-        
+        # Découper les configs en lots de 8
+        configs = list(report_configs)
+        for i in range(0, len(configs), MAX_REPORTS):
+            batch = configs[i:i+MAX_REPORTS]
+            batch_results = []
+            for config in batch:
+                report_title = scan_title
+                print(f"   📄 Création {config['description']}...")
+                report_id = api.create_report_scanbased(
+                    scan_id=scan_id,
+                    template_id=config['template_id'],
+                    output_format=config['output_format'],
+                    report_title=report_title
+                )
+                if report_id:
+                    print(f"   ✅ {config['description']} créé: {report_id}")
+                    batch_results.append({
+                        'report_id': report_id,
+                        'template_id': config['template_id'],
+                        'output_format': config['output_format'],
+                        'report_title': scan_title,
+                        'description': config['description'],
+                        'status': 'created'
+                    })
+                else:
+                    print(f"   ❌ Échec de création du {config['description']}")
+            # Attendre la fin des rapports du lot
+            wait_for_reports_to_finish(api, [r['report_id'] for r in batch_results])
+            scan_reports['reports'].extend(batch_results)
         if scan_reports['reports']:
             created_reports.append(scan_reports)
-    
+
     # Résumé de création
     total_created = sum(len(scan_reports['reports']) for scan_reports in created_reports)
     total_failed = total_reports - total_created
-    
+
     print(f"\n📊 RÉSUMÉ DE CRÉATION:")
     print(f"   ✅ Rapports créés avec succès: {total_created}")
     if total_failed > 0:
         print(f"   ❌ Rapports en échec: {total_failed}")
     print(f"   📁 Scans traités: {len(created_reports)}/{len(selected_scans)}")
-    
+
     return created_reports
 
 def create_reports_from_selected_templates(api, selected_templates):
@@ -283,65 +266,79 @@ def create_reports_from_selected_templates(api, selected_templates):
     
     created_reports = []
     total_reports = len(selected_templates)
-    current_report = 0
-    
+
+    # Préparer la liste de jobs (un par template)
+    jobs = []
     for template in selected_templates:
+        jobs.append(template)
+
+    def create_job(template):
         template_id = template['template_id']
         template_title = template['name']
         template_date = datetime.today().strftime("%d/%m/%Y %H:%M")
-        
+        progress = f"({jobs.index(template)+1}/{len(jobs)})"
+        report_title = template_title
         print(f"\n🔄 Traitement du template: [{template_date}] {template_title}")
         print(f"   ID: {template_id}")
-        print("-" * 60)
-        
-        template_reports = {
-            'template_info': template,
-            'reports': []
-        }
-        
-
-        current_report += 1
-        progress = f"({current_report}/{total_reports})"
-        
-        # Génération du titre du rapport
-        # report_title = f"{scan_title}_{scan_date.replace('/', '-').replace(' ', '_').replace(':', '-')}_{config['output_format']}"
-        report_title = template_title
-
         print(f"   📄 {progress} Création {report_title}...")
-        
         report_id = api.create_report_hostbased(
             template_id=template_id,
             output_format=template['output_format'],
             report_title=report_title
         )
-        
         if report_id:
-            report_info = {
-                'report_id': report_id,
-                'template_id': template_id,
-                'output_format': template['output_format'],
-                'report_title': report_title,
-                'description': template['description'],
-                'status': 'created'
-            }
-            template_reports['reports'].append(report_info)
             print(f"   ✅ {template_title} créé: {report_id}")
         else:
             print(f"   ❌ Échec de création du {template['description']}")
-        
-        if template_reports['reports']:
-            created_reports.append(template_reports)
-    
+        return {
+            'template': template,
+            'report_id': report_id
+        }
+
+    # Utilise la logique de lot
+    batch = []
+    batch_results = []
+    for template in jobs:
+        result = create_job(template)
+        if result['report_id']:
+            batch.append(result)
+        if len(batch) == MAX_REPORTS:
+            wait_for_reports_to_finish(api, [r['report_id'] for r in batch])
+            batch_results.extend(batch)
+            batch = []
+    if batch:
+        wait_for_reports_to_finish(api, [r['report_id'] for r in batch])
+        batch_results.extend(batch)
+
+    # Regroupe les résultats
+    for result in batch_results:
+        template = result['template']
+        report_id = result['report_id']
+        if not report_id:
+            continue
+        template_reports = {
+            'template_info': template,
+            'reports': [{
+                'report_id': report_id,
+                'template_id': template['template_id'],
+                'output_format': template['output_format'],
+                'report_title': template['name'],
+                'description': template['description'],
+                'status': 'created'
+            }]
+        }
+        created_reports.append(template_reports)
+
     # Résumé de création
     total_created = sum(len(template_reports['reports']) for template_reports in created_reports)
     total_failed = total_reports - total_created
-    
+
     print(f"\n📊 RÉSUMÉ DE CRÉATION:")
     print(f"   ✅ Rapports créés avec succès: {total_created}")
     if total_failed > 0:
         print(f"   ❌ Rapports en échec: {total_failed}")
     print(f"   📁 Scans traités: {len(created_reports)}/{len(selected_templates)}")
-    
+
     return created_reports
 
 def remplacer_date_par_aujourdhui(texte):
@@ -358,7 +355,7 @@ def remplacer_date_par_aujourdhui(texte):
 
 import time
 
-def wait_until_ready_and_download(api, report_id, max_wait=300, interval=10):
+def wait_until_ready_and_download(api, report_id, max_wait=300, interval=30):
     """
     Attend que le rapport soit prêt (Finished), puis le télécharge automatiquement.
     
@@ -369,6 +366,7 @@ def wait_until_ready_and_download(api, report_id, max_wait=300, interval=10):
         interval: intervalle de vérification en secondes
     """
     waited = 0
+    interval = 30
     while waited < max_wait:
         status = api.check_report_status(report_id)
         if status == "Finished":
@@ -386,7 +384,7 @@ def wait_until_ready_and_download(api, report_id, max_wait=300, interval=10):
     print("⚠️ Temps d'attente dépassé. Rapport non prêt.")
     return None
 
-def wait_for_reports_to_finish(api, report_ids, interval=10):
+def wait_for_reports_to_finish(api, report_ids, interval=30):
     """
     Attend que tous les rapports du lot soient terminés avant de continuer.
     """
@@ -418,10 +416,10 @@ def create_reports_with_limit(api, items, create_func):
         if report_id:
             batch.append(report_id)
         if len(batch) == MAX_REPORTS:
-            wait_for_reports_to_finish(api, batch)
+            wait_for_reports_to_finish(api, batch, interval=30)
             all_reports.extend(batch)
             batch = []
     if batch:
-        wait_for_reports_to_finish(api, batch)
+        wait_for_reports_to_finish(api, batch, interval=30)
         all_reports.extend(batch)
     return all_reports

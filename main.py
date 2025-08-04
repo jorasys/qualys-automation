@@ -3,32 +3,27 @@ from datetime import datetime
 from qualys import QualysAPI
 from menu import create_scan_menu, create_template_menu
 from utils import save_selected_scans, wait_until_ready_and_download, create_reports_from_selected_scans, create_reports_from_selected_templates
+from config import BASE_URL, USERNAME, PASSWORD, PROXY_URL, TEMPLATES
 
 
 def main():
-    # Configuration depuis votre environnement Postman
-    BASE_URL = "qualysapi.qualys.eu"
-    USERNAME = "wha-ep2"  # Remplacez par votre nom d'utilisateur
-    PASSWORD = "c4XFr:wH5tHB!!"  # Remplacez par votre mot de passe
-    PROXY_URL = "http://127.0.0.1:3128"  # Proxy configuré
-    
     print("🚀 Démarrage du script Qualys - Étapes 1 & 2")
     print("=" * 50)
-    
+
     # Initialisation de l'API avec le proxy
     api = QualysAPI(BASE_URL, USERNAME, PASSWORD, PROXY_URL)
-    
+
     # Étape 1: Récupération des scans (équivalent à votre requête 01)
     scan_results = api.get_last_30_scans()
-    
+
     if not scan_results:
         print("❌ Aucun résultat obtenu. Vérifiez vos credentials et la connectivité.")
         return
-    
+
     # Sauvegarde des résultats bruts
     with open('scan_results.json', 'w', encoding='utf-8') as f:
         json.dump(scan_results, f, indent=2, ensure_ascii=False)
-    
+
     print(f"💾 Résultats bruts sauvegardés dans 'scan_results.json'")
 
     # print("=== EXEMPLE 1: Menu de scans ===")
@@ -36,36 +31,8 @@ def main():
     # print(f"Résumé: {scan_menu.get_summary()}")
     selected_scans = scan_menu.display_checkbox_menu()
 
-    # Exemple 2: Menu de templates
-    templates = [
-        {
-            'name': '#19-PCI-HostBased_Distribution_Report',
-            'template_id': '92297434',
-            'output_format': 'pdf',
-            'description': 'PCI HostBased Distribution Report (PDF)'
-        },
-        {
-            'name': '#19-PCI-HostBased_Distribution_Report',
-            'template_id': '92297443',
-            'output_format': 'csv',
-            'description': 'PCI HostBased Distribution Report (CSV)'
-        },
-        {
-            'name': '#20-PCI-HostBased_NoDistribution_Report',
-            'template_id': '92297435',
-            'output_format': 'pdf',
-            'description': 'PCI HostBased NoDistribution Report (PDF)'
-        },
-        {
-            'name': '#20-PCI-HostBased_NoDistribution_Report',
-            'template_id': '92297457',
-            'output_format': 'csv',
-            'description': 'PCI HostBased NoDistribution Report (CSV)'
-        }
-    ]
-    
-    # print("\n=== EXEMPLE 2: Menu de templates ===")
-    template_menu = create_template_menu(templates)
+    # Exemple 2: Menu de templates (depuis config)
+    template_menu = create_template_menu(TEMPLATES)
     # print(f"Résumé: {template_menu.get_summary()}")
     selected_templates = template_menu.display_checkbox_menu()
     
@@ -150,6 +117,6 @@ def main():
             else:
                 print(f"❌ Rapport {report_id} non téléchargé.")
     
-
+# 
 if __name__ == "__main__":
     main()
