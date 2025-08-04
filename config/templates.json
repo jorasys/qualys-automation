@@ -1,0 +1,42 @@
+{
+  "scan_based_reports": [
+    {
+      "name": "Standard PDF Report",
+      "template_id": "92297436",
+      "output_format": "pdf",
+      "description": "Rapport standard PDF pour auditeurs"
+    },
+    {
+      "name": "Analysis CSV Report",
+      "template_id": "92297455",
+      "output_format": "csv",
+      "description": "Rapport CSV pour analyse et tickets"
+    }
+  ],
+  "host_based_reports": [
+    {
+      "name": "#19-PCI-HostBased_Distribution_Report",
+      "template_id": "92297434",
+      "output_format": "pdf",
+      "description": "PCI HostBased Distribution Report (PDF)"
+    },
+    {
+      "name": "#19-PCI-HostBased_Distribution_Report",
+      "template_id": "92297443",
+      "output_format": "csv",
+      "description": "PCI HostBased Distribution Report (CSV)"
+    },
+    {
+      "name": "#20-PCI-HostBased_NoDistribution_Report",
+      "template_id": "92297435",
+      "output_format": "pdf",
+      "description": "PCI HostBased NoDistribution Report (PDF)"
+    },
+    {
+      "name": "#20-PCI-HostBased_NoDistribution_Report",
+      "template_id": "92297457",
+      "output_format": "csv",
+      "description": "PCI HostBased NoDistribution Report (CSV)"
+    }
+  ]
+}
