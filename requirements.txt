@@ -1,0 +1,17 @@
+# Core dependencies
+requests>=2.31.0
+sqlalchemy>=2.0.0
+python-dotenv>=1.0.0
+
+# Optional UI enhancement
+inquirer>=3.1.0
+
+# Development and testing (optional)
+pytest>=7.4.0
+pytest-cov>=4.1.0
+
+# Database migrations (for future use)
+alembic>=1.12.0
+
+# Utilities
+pathlib2>=2.3.7; python_version < "3.4"

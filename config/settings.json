@@ -1,0 +1,30 @@
+{
+  "api": {
+    "base_url": "qualysapi.qualys.eu",
+    "timeout": 30,
+    "max_retries": 3,
+    "proxy": {
+      "enabled": true,
+      "url": "http://127.0.0.1:3128"
+    }
+  },
+  "reports": {
+    "max_concurrent": 8,
+    "download_path": "~/Downloads",
+    "formats": ["pdf", "csv"],
+    "cleanup_after_days": 30
+  },
+  "database": {
+    "type": "sqlite",
+    "path": "data/qualys_vuln.db",
+    "echo": false,
+    "pool_size": 5
+  },
+  "logging": {
+    "level": "INFO",
+    "format": "%(asctime)s - %(name)s - %(levelname)s - %(message)s",
+    "file": "logs/qualys_automation.log",
+    "max_bytes": 10485760,
+    "backup_count": 5
+  }
+}
