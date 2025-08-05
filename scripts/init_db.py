@@ -15,6 +15,7 @@ from src.core.database import db_manager
 from src.core.config import config
 from src.models import Base
 from datetime import datetime
+from sqlalchemy import text
 
 
 def init_database():
@@ -40,7 +41,7 @@ def init_database():
         print("🔗 Test de la connexion...")
         with db_manager.get_session() as session:
             # Simple test query
-            result = session.execute("SELECT 1").scalar()
+            result = session.execute(text("SELECT 1")).scalar()
             if result == 1:
                 print("✅ Connexion à la base de données validée")
             else:

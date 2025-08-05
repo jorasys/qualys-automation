@@ -18,7 +18,7 @@ from ..core.exceptions import APIError, AuthenticationError, ParsingError
 class QualysClient:
     """Qualys API client with improved error handling, rate limiting and report management"""
     
-    def __init__(self, api_config: APIConfig):
+    def __init__(self, api_config: APIConfig, reports_config=None):
         self.config = api_config
         self.base_url = f"https://{api_config.base_url}"
         
@@ -27,8 +27,11 @@ class QualysClient:
         self.rate_limit_reset = None
         self.last_request_time = None
         
-        # Report management
-        self.max_running_reports = 8
+        # Report management - use config value or default
+        if reports_config:
+            self.max_running_reports = reports_config.max_running_reports
+        else:
+            self.max_running_reports = 8
         
         # Initialize session
         self.session = requests.Session()

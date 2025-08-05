@@ -17,7 +17,7 @@
   "reports": {
     "max_concurrent": 8,
     "max_running_reports": 8,
-    "download_path": "~/Downloads",
+    "download_path": "Downloads",
     "formats": ["pdf", "csv"],
     "cleanup_after_days": 30,
     "creation_controls": {

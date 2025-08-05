@@ -34,13 +34,23 @@ class DatabaseConfig:
 class ReportsConfig:
     """Configuration for reports handling"""
     max_concurrent: int = 8
-    download_path: str = "~/Downloads"
+    max_running_reports: int = 8
+    download_path: str = "Downloads"
     formats: List[str] = None
     cleanup_after_days: int = 30
+    creation_controls: Dict[str, Any] = None
     
     def __post_init__(self):
         if self.formats is None:
             self.formats = ["pdf", "csv"]
+        if self.creation_controls is None:
+            self.creation_controls = {
+                "check_slots_before_creation": True,
+                "max_wait_for_slots": 1800,
+                "slot_check_interval": 30,
+                "pause_between_reports": 2,
+                "batch_size": 4
+            }
 
 
 @dataclass
