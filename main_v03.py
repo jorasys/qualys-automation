@@ -16,6 +16,7 @@ from src.api.qualys_client import QualysClient
 from src.services.report_service import ReportService
 from src.ui.menu_manager import create_scan_menu, create_template_menu
 from datetime import datetime
+from sqlalchemy import text
 
 
 def main():
@@ -35,13 +36,14 @@ def main():
         print("🗄️  Vérification de la base de données...")
         with db_manager.get_session() as session:
             # Test connection
-            session.execute("SELECT 1")
+            session.execute(text("SELECT 1"))
             print("   ✅ Connexion à la base de données OK")
         
         # Initialize Qualys client
         print("🔗 Initialisation du client Qualys...")
-        qualys_client = QualysClient(api_config)
-        
+        reports_config = config.reports
+        qualys_client = QualysClient(api_config, reports_config)
+
         # Initialize services
         report_service = ReportService(qualys_client)
         
@@ -84,66 +86,52 @@ def main():
         else:
             print(f"✅ {len(selected_templates)} template(s) sélectionné(s)")
         
-        # Step 4: Report creation
-        created_reports = []
+        # Step 4: Report creation with integrated download
+        all_processed_reports = []
         
         if selected_scans:
-            print("\n📊 ÉTAPE 4A: Création des rapports basés sur les scans")
-            print("-" * 50)
+            print("\n📊 ÉTAPE 4A: Création et téléchargement des rapports basés sur les scans")
+            print("-" * 60)
             
             try:
                 scan_reports = report_service.create_reports_from_selected_scans(selected_scans)
-                created_reports.extend(scan_reports)
+                all_processed_reports.extend(scan_reports)
             except Exception as e:
                 print(f"❌ Erreur lors de la création des rapports de scans: {e}")
         
         if selected_templates:
-            print("\n📊 ÉTAPE 4B: Création des rapports basés sur les templates")
-            print("-" * 50)
+            print("\n📊 ÉTAPE 4B: Création et téléchargement des rapports basés sur les templates")
+            print("-" * 60)
             
             try:
                 template_reports = report_service.create_reports_from_selected_templates(selected_templates)
-                created_reports.extend(template_reports)
+                all_processed_reports.extend(template_reports)
             except Exception as e:
                 print(f"❌ Erreur lors de la création des rapports de templates: {e}")
         
-        # Step 5: Download reports
-        if created_reports:
-            print("\n📥 ÉTAPE 5: Téléchargement automatique des rapports")
-            print("-" * 50)
-            
+        # Final summary (download is now integrated)
+        if all_processed_reports:
+            # Count successful downloads from all report groups
             downloaded_count = 0
             failed_count = 0
             
-            for report_group in created_reports:
-                reports = report_group['reports']
+            for report_group in all_processed_reports:
+                reports = report_group.get('reports', [])
                 for report in reports:
-                    report_id = report['report_id']
-                    description = report.get('description', report.get('report_title', ''))
-                    
-                    print(f"\n🔎 Surveillance du rapport {report_id} ({description})...")
-                    
-                    try:
-                        filename = report_service.wait_until_ready_and_download(report_id)
-                        if filename:
-                            print(f"✅ Rapport téléchargé: {filename}")
-                            downloaded_count += 1
-                        else:
-                            print(f"❌ Rapport {report_id} non téléchargé")
-                            failed_count += 1
-                    except Exception as e:
-                        print(f"❌ Erreur lors du téléchargement du rapport {report_id}: {e}")
+                    if report.get('status') == 'downloaded':
+                        downloaded_count += 1
+                    else:
                         failed_count += 1
             
-            # Final summary
-            print(f"\n📊 RÉSUMÉ FINAL:")
-            print(f"   ✅ Rapports téléchargés: {downloaded_count}")
+            print(f"\n🎉 RÉSUMÉ FINAL:")
+            print(f"   ✅ Rapports téléchargés avec succès: {downloaded_count}")
             if failed_count > 0:
-                print(f"   ❌ Rapports en échec: {failed_count}")
+                print(f"   ❌ Rapports échoués ou non téléchargés: {failed_count}")
             print(f"   📁 Total traité: {downloaded_count + failed_count}")
+            print(f"   📂 Fichiers sauvegardés dans: {reports_config.download_path}")
         
         else:
-            print("\n⚠️  Aucun rapport à télécharger")
+            print("\n⚠️  Aucun rapport créé")
         
         print(f"\n🎉 Script terminé avec succès!")
         return 0
