@@ -6,13 +6,27 @@
     "proxy": {
       "enabled": true,
       "url": "http://127.0.0.1:3128"
+    },
+    "rate_limiting": {
+      "max_requests_per_hour": 300,
+      "warning_threshold": 50,
+      "critical_threshold": 10,
+      "pause_on_limit": true
     }
   },
   "reports": {
     "max_concurrent": 8,
+    "max_running_reports": 8,
     "download_path": "~/Downloads",
     "formats": ["pdf", "csv"],
-    "cleanup_after_days": 30
+    "cleanup_after_days": 30,
+    "creation_controls": {
+      "check_slots_before_creation": true,
+      "max_wait_for_slots": 1800,
+      "slot_check_interval": 30,
+      "pause_between_reports": 2,
+      "batch_size": 4
+    }
   },
   "database": {
     "type": "sqlite",

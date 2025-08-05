@@ -58,6 +58,18 @@ python scripts/init_db.py reset
 python scripts/migrate_existing_data.py status
 ```
 
+### 🆕 Monitoring API (Nouveauté v0.3)
+```bash
+# Vérifier le statut de l'API Qualys
+python scripts/api_monitor.py status
+
+# Attendre que des slots soient disponibles
+python scripts/api_monitor.py wait 2
+
+# Tester la connexion API
+python scripts/api_monitor.py test
+```
+
 ## 📁 Structure Créée
 
 ```
@@ -80,6 +92,10 @@ qualys-automation/
 - ✅ **Robustesse** : Gestion d'erreurs et retry logic
 - ✅ **Interface** : Menus interactifs améliorés
 - ✅ **Migration** : Préservation des données existantes
+- 🆕 **Contrôles API** : Respect des limitations Qualys
+- 🆕 **Rate Limiting** : Suivi du quota 300 req/heure
+- 🆕 **Slots Management** : Max 8 rapports simultanés
+- 🆕 **Monitoring** : Scripts de surveillance API
 
 ## 🚧 Prochaines Étapes (Phase 2)
 
@@ -88,13 +104,32 @@ qualys-automation/
 - API REST pour intégration
 - Parser CSV pour vulnérabilités
 
+## 🚨 Contrôles API Critiques
+
+### Avant de lancer des rapports
+```bash
+# Toujours vérifier le statut API
+python scripts/api_monitor.py status
+```
+
+### Si vous voyez des alertes
+- **⚠️ Quota faible** : Attendez ou réduisez le nombre de rapports
+- **🛑 Pas de slots** : Attendez qu'un rapport se termine
+- **❌ Erreur API** : Vérifiez la connectivité et credentials
+
+### Bonnes pratiques
+- **Surveillez** le quota API (300 req/heure)
+- **Respectez** la limite de 8 rapports simultanés
+- **Utilisez** les scripts de monitoring avant gros traitements
+
 ## 🆘 Support
 
 En cas de problème :
 1. Vérifiez les logs dans `logs/qualys_automation.log`
 2. Consultez `README_v03.md` pour la documentation complète
-3. Utilisez `python scripts/init_db.py info` pour diagnostiquer la DB
+3. Utilisez `python scripts/api_monitor.py status` pour l'état API
+4. Consultez `API_CONTROLS_v03.md` pour les contrôles détaillés
 
 ---
 
-**🎉 Votre projet est maintenant prêt pour la Phase 2 du développement !**
+**🎉 Votre projet respecte maintenant les limitations Qualys et est prêt pour la Phase 2 !**

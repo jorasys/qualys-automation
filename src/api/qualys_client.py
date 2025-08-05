@@ -1,13 +1,14 @@
 """
 Qualys API Client - Refactored version
-Handles communication with Qualys API
+Handles communication with Qualys API with rate limiting and report management
 """
 import requests
 import xml.etree.ElementTree as ET
 import base64
 import os
+import time
 from pathlib import Path
-from typing import Dict, List, Optional, Any
+from typing import Dict, List, Optional, Any, Tuple
 from datetime import datetime
 
 from ..core.config import APIConfig
@@ -15,11 +16,19 @@ from ..core.exceptions import APIError, AuthenticationError, ParsingError
 
 
 class QualysClient:
-    """Qualys API client with improved error handling and configuration"""
+    """Qualys API client with improved error handling, rate limiting and report management"""
     
     def __init__(self, api_config: APIConfig):
         self.config = api_config
         self.base_url = f"https://{api_config.base_url}"
+        
+        # Rate limiting tracking
+        self.rate_limit_remaining = None
+        self.rate_limit_reset = None
+        self.last_request_time = None
+        
+        # Report management
+        self.max_running_reports = 8
         
         # Initialize session
         self.session = requests.Session()
@@ -44,16 +53,29 @@ class QualysClient:
         self.session.timeout = api_config.timeout
     
     def _make_request(self, method: str, endpoint: str, **kwargs) -> requests.Response:
-        """Make HTTP request with error handling and retries"""
+        """Make HTTP request with error handling, retries and rate limiting"""
         url = f"{self.base_url}{endpoint}"
+        
+        # Check rate limiting before making request
+        self._check_rate_limit()
         
         for attempt in range(self.config.max_retries + 1):
             try:
+                self.last_request_time = datetime.now()
                 response = self.session.request(method, url, **kwargs)
+                
+                # Update rate limiting info from headers
+                self._update_rate_limit_info(response)
                 
                 # Check for authentication errors
                 if response.status_code == 401:
                     raise AuthenticationError("Invalid credentials or session expired")
+                
+                # Check for rate limiting
+                if response.status_code == 429:
+                    print("⚠️  Rate limit atteint, attente avant nouvelle tentative...")
+                    time.sleep(60)  # Wait 1 minute before retry
+                    continue
                 
                 # Check for other HTTP errors
                 response.raise_for_status()
@@ -65,10 +87,35 @@ class QualysClient:
                     raise APIError(f"Request failed after {self.config.max_retries + 1} attempts: {e}")
                 
                 # Wait before retry (simple exponential backoff)
-                import time
                 time.sleep(2 ** attempt)
         
         raise APIError("Unexpected error in request handling")
+    
+    def _check_rate_limit(self):
+        """Check if we're approaching rate limits and warn user"""
+        if self.rate_limit_remaining is not None:
+            if self.rate_limit_remaining < 10:
+                print(f"⚠️  ATTENTION: Seulement {self.rate_limit_remaining} requêtes API restantes!")
+                if self.rate_limit_remaining < 5:
+                    print("🛑 Arrêt recommandé pour éviter le blocage API")
+                    response = input("Continuer quand même? (oui/non): ").lower().strip()
+                    if response not in ['oui', 'yes', 'y', 'o']:
+                        raise APIError("Opération annulée pour préserver le quota API")
+    
+    def _update_rate_limit_info(self, response: requests.Response):
+        """Update rate limiting information from response headers"""
+        if 'X-RateLimit-Remaining' in response.headers:
+            try:
+                self.rate_limit_remaining = int(response.headers['X-RateLimit-Remaining'])
+                print(f"📊 Requêtes API restantes: {self.rate_limit_remaining}")
+            except ValueError:
+                pass
+        
+        if 'X-RateLimit-Reset' in response.headers:
+            try:
+                self.rate_limit_reset = int(response.headers['X-RateLimit-Reset'])
+            except ValueError:
+                pass
     
     def _parse_xml_response(self, response: requests.Response) -> ET.Element:
         """Parse XML response with error handling"""
@@ -301,3 +348,111 @@ class QualysClient:
             if isinstance(e, (APIError, AuthenticationError, ParsingError)):
                 raise
             raise APIError(f"Failed to get report info: {e}")
+    
+    def get_running_reports_count(self) -> int:
+        """
+        Get count of currently running reports
+        Returns: Number of reports in 'Running' status
+        """
+        try:
+            response = self._make_request('POST', '/api/2.0/fo/report/', data={'action': 'list'})
+            root = self._parse_xml_response(response)
+            
+            reports = root.findall('.//REPORT')
+            running_count = 0
+            
+            for report in reports:
+                status_elem = report.find('./STATUS/STATE')
+                if status_elem is not None and status_elem.text == 'Running':
+                    running_count += 1
+            
+            return running_count
+            
+        except Exception as e:
+            if isinstance(e, (APIError, AuthenticationError, ParsingError)):
+                raise
+            raise APIError(f"Failed to get running reports count: {e}")
+    
+    def get_running_reports(self) -> List[Dict[str, Any]]:
+        """
+        Get list of currently running reports with details
+        Returns: List of running report information
+        """
+        try:
+            response = self._make_request('POST', '/api/2.0/fo/report/', data={'action': 'list'})
+            root = self._parse_xml_response(response)
+            
+            reports = root.findall('.//REPORT')
+            running_reports = []
+            
+            for report in reports:
+                status_elem = report.find('./STATUS/STATE')
+                if status_elem is not None and status_elem.text == 'Running':
+                    report_info = {
+                        'id': report.findtext('ID'),
+                        'title': report.findtext('TITLE'),
+                        'status': status_elem.text,
+                        'launch_date': report.findtext('LAUNCH_DATETIME'),
+                        'type': report.findtext('TYPE')
+                    }
+                    running_reports.append(report_info)
+            
+            return running_reports
+            
+        except Exception as e:
+            if isinstance(e, (APIError, AuthenticationError, ParsingError)):
+                raise
+            raise APIError(f"Failed to get running reports: {e}")
+    
+    def wait_for_report_slots(self, required_slots: int = 1, max_wait: int = 1800, check_interval: int = 30) -> bool:
+        """
+        Wait until there are enough free report slots available
+        
+        Args:
+            required_slots: Number of free slots needed
+            max_wait: Maximum wait time in seconds (default 30 minutes)
+            check_interval: Check interval in seconds
+            
+        Returns: True if slots are available, False if timeout
+        """
+        waited = 0
+        
+        while waited < max_wait:
+            try:
+                running_count = self.get_running_reports_count()
+                available_slots = self.max_running_reports - running_count
+                
+                print(f"📊 Rapports en cours: {running_count}/{self.max_running_reports} (slots libres: {available_slots})")
+                
+                if available_slots >= required_slots:
+                    return True
+                
+                if waited == 0:
+                    print(f"⏳ Attente de {required_slots} slot(s) libre(s)...")
+                    if running_count > 0:
+                        running_reports = self.get_running_reports()
+                        print("📋 Rapports en cours d'exécution:")
+                        for report in running_reports[:5]:  # Show first 5
+                            print(f"   - {report['title']} (ID: {report['id']})")
+                        if len(running_reports) > 5:
+                            print(f"   ... et {len(running_reports) - 5} autres")
+                
+                print(f"⏳ Nouvelle vérification dans {check_interval}s...")
+                time.sleep(check_interval)
+                waited += check_interval
+                
+            except Exception as e:
+                print(f"❌ Erreur lors de la vérification des slots: {e}")
+                time.sleep(check_interval)
+                waited += check_interval
+        
+        print(f"⚠️  Timeout atteint ({max_wait}s). Slots toujours non disponibles.")
+        return False
+    
+    def get_rate_limit_info(self) -> Dict[str, Any]:
+        """Get current rate limit information"""
+        return {
+            'remaining': self.rate_limit_remaining,
+            'reset': self.rate_limit_reset,
+            'last_request': self.last_request_time
+        }
