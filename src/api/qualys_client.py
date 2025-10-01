@@ -18,7 +18,7 @@ from ..core.exceptions import APIError, AuthenticationError, ParsingError
 class QualysClient:
     """Qualys API client with improved error handling, rate limiting and report management"""
     
-    def __init__(self, api_config: APIConfig):
+    def __init__(self, api_config: APIConfig, reports_config=None):
         self.config = api_config
         self.base_url = f"https://{api_config.base_url}"
         
@@ -27,8 +27,11 @@ class QualysClient:
         self.rate_limit_reset = None
         self.last_request_time = None
         
-        # Report management
-        self.max_running_reports = 8
+        # Report management - use config value or default
+        if reports_config:
+            self.max_running_reports = reports_config.max_running_reports
+        else:
+            self.max_running_reports = 8
         
         # Initialize session
         self.session = requests.Session()
@@ -124,47 +127,159 @@ class QualysClient:
         except ET.ParseError as e:
             raise ParsingError(f"Failed to parse XML response: {e}")
     
-    def get_last_30_scans(self) -> Dict[str, Dict[str, str]]:
+    def get_last_30_scans(self, scan_type: Optional[str] = None) -> List[Dict[str, Any]]:
         """
-        Get last 30 scans from Qualys
-        Returns: Dict with scan title as key, and dict of {date: scan_id} as value
+        Get last 30 scans from Qualys, optionally filtered by type
+        Args:
+            scan_type: 'network' for VM/PC scans, 'agent' for agent scans, None for all
+        Returns: List of dicts with scan info: {'title', 'date', 'scan_id', 'type'}
         """
         try:
             response = self._make_request('GET', '/api/2.0/fo/scan/', params={'action': 'list'})
             root = self._parse_xml_response(response)
-            
+
             scan_list = root.find('.//SCAN_LIST')
             if scan_list is None:
-                return {}
-            
+                return []
+
             scans = scan_list.findall('SCAN')
             if not scans:
-                return {}
-            
-            scan_results = {}
+                return []
+
+            scan_results = []
             for scan in scans:
                 title_elem = scan.find('TITLE')
                 date_elem = scan.find('LAUNCH_DATETIME')
                 ref_elem = scan.find('REF')
-                
+                type_elem = scan.find('TYPE')
+
                 if title_elem is None or date_elem is None or ref_elem is None:
                     continue
-                
+
                 title = title_elem.text
                 date = date_elem.text
                 scan_id = ref_elem.text
-                
-                if title in scan_results:
-                    scan_results[title][date] = scan_id
-                else:
-                    scan_results[title] = {date: scan_id}
-            
+                scan_type_xml = type_elem.text if type_elem is not None else None
+
+                # Filter by scan_type if specified
+                if scan_type == 'network' and scan_type_xml not in ['VM', 'PC']:
+                    continue
+                elif scan_type == 'agent' and scan_type_xml != 'AGENT':
+                    continue
+
+                # Format date for display
+                try:
+                    dt = datetime.fromisoformat(date.replace('Z', '+00:00'))
+                    formatted_date = dt.strftime('%d/%m/%Y %H:%M')
+                except ValueError:
+                    formatted_date = date  # fallback
+
+                scan_results.append({
+                    'title': title,
+                    'date': date,
+                    'formatted_date': formatted_date,
+                    'scan_id': scan_id,
+                    'type': scan_type_xml
+                })
+
             return scan_results
-            
+
         except Exception as e:
             if isinstance(e, (APIError, AuthenticationError, ParsingError)):
                 raise
             raise APIError(f"Failed to get scans: {e}")
+    
+    def download_scan(self, scan_ref: str, scan_title: str = None, scan_date: str = None, download_path: Optional[str] = None) -> Optional[str]:
+        """
+        Download a scan and save it to the specified path
+        Returns: Full file path if successful, None otherwise
+        """
+        try:
+            data = {
+                'action': 'fetch',
+                'scan_ref': scan_ref,
+                'mode': 'extended',
+                'output_format': 'csv'
+            }
+
+            response = self._make_request('POST', '/api/2.0/fo/scan/', data=data, stream=True)
+
+            # Generate filename
+            safe_ref = scan_ref.replace('/', '_').replace('\\', '_')
+            filename = f"{safe_ref}.csv"
+
+            # Determine download directory
+            if download_path:
+                download_dir = Path(download_path)
+            else:
+                download_dir = Path.home() / "Downloads"
+
+            download_dir.mkdir(exist_ok=True)
+            filepath = download_dir / filename
+
+            # Save to file
+            with open(filepath, 'wb') as f:
+                for chunk in response.iter_content(chunk_size=8192):
+                    if chunk:
+                        f.write(chunk)
+
+            return str(filepath)
+
+        except Exception as e:
+            if isinstance(e, (APIError, AuthenticationError, ParsingError)):
+                raise
+            raise APIError(f"Failed to download scan: {e}")
+
+    def get_scan(self, scan_ref: str, output_format: str, filename:str, download_path: Optional[str] = None) -> Optional[str]:
+        """
+        Download a scan with specified output format and save it to the specified path
+        Args:
+            scan_ref: Scan reference (e.g., 'scan/1753175840.29341')
+            output_format: Output format (e.g., 'csv', 'csv_extended', 'xml', etc.)
+            download_path: Optional download directory path
+        Returns: Full file path if successful, None otherwise
+        """
+        try:
+            data = {
+                'action': 'fetch',
+                'scan_ref': scan_ref,
+                'mode': 'extended',
+                'output_format': output_format
+            }
+
+            response = self._make_request('POST', '/api/2.0/fo/scan/', data=data, stream=True)
+
+            # Determine file extension based on output format
+            if output_format.lower() in ['csv', 'csv_extended']:
+                extension = 'csv'
+            elif output_format.lower() == 'xml':
+                extension = 'xml'
+            elif output_format.lower() == 'pdf':
+                extension = 'pdf'
+            else:
+                extension = output_format.lower()
+
+            # Determine download directory
+            if download_path:
+                download_dir = Path(download_path)
+            else:
+                download_dir = Path.home() / "Downloads"
+
+            download_dir.mkdir(exist_ok=True)
+            filepath = download_dir / filename
+
+            # Save to file
+            with open(filepath, 'wb') as f:
+                for chunk in response.iter_content(chunk_size=8192):
+                    if chunk:
+                        f.write(chunk)
+
+            return str(filepath)
+
+        except Exception as e:
+            if isinstance(e, (APIError, AuthenticationError, ParsingError)):
+                raise
+            raise APIError(f"Failed to get scan: {e}")
     
     def create_report_scanbased(self, scan_id: str, template_id: str, 
                                output_format: str, report_title: str) -> Optional[str]:

@@ -1,17 +1,13 @@
 # Core dependencies
 requests>=2.31.0
-sqlalchemy>=2.0.0
 python-dotenv>=1.0.0
 
-# Optional UI enhancement
-inquirer>=3.1.0
+# Optional dependencies for interactive menus
+inquirer>=3.1.3
 
-# Development and testing (optional)
-pytest>=7.4.0
-pytest-cov>=4.1.0
-
-# Database migrations (for future use)
-alembic>=1.12.0
-
-# Utilities
-pathlib2>=2.3.7; python_version < "3.4"
+# Development dependencies (optional)
+# pytest>=7.4.0
+# pytest-cov>=4.1.0
+# mypy>=1.5.0
+# black>=23.7.0
+# flake8>=6.1.0

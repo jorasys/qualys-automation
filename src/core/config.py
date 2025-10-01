@@ -22,25 +22,26 @@ class APIConfig:
 
 
 @dataclass
-class DatabaseConfig:
-    """Configuration for database connection"""
-    type: str = "sqlite"
-    path: str = "data/qualys_vuln.db"
-    echo: bool = False
-    pool_size: int = 5
-
-
-@dataclass
 class ReportsConfig:
     """Configuration for reports handling"""
     max_concurrent: int = 8
-    download_path: str = "~/Downloads"
+    max_running_reports: int = 8
+    download_path: str = "Downloads"
     formats: List[str] = None
     cleanup_after_days: int = 30
+    creation_controls: Dict[str, Any] = None
     
     def __post_init__(self):
         if self.formats is None:
             self.formats = ["pdf", "csv"]
+        if self.creation_controls is None:
+            self.creation_controls = {
+                "check_slots_before_creation": True,
+                "max_wait_for_slots": 1800,
+                "slot_check_interval": 30,
+                "pause_between_reports": 2,
+                "batch_size": 4
+            }
 
 
 @dataclass
@@ -115,12 +116,6 @@ class ConfigManager:
         )
     
     @property
-    def database(self) -> DatabaseConfig:
-        """Get database configuration"""
-        db_config = self._settings["database"]
-        return DatabaseConfig(**db_config)
-    
-    @property
     def reports(self) -> ReportsConfig:
         """Get reports configuration"""
         reports_config = self._settings["reports"]
@@ -150,23 +145,5 @@ class ConfigManager:
         
         return None
     
-    def get_database_url(self) -> str:
-        """Get database URL for SQLAlchemy"""
-        db_config = self.database
-        
-        if db_config.type == "sqlite":
-            # Ensure data directory exists
-            data_dir = Path(db_config.path).parent
-            data_dir.mkdir(exist_ok=True)
-            return f"sqlite:///{db_config.path}"
-        elif db_config.type == "postgresql":
-            database_url = os.getenv("DATABASE_URL")
-            if not database_url:
-                raise ValueError("DATABASE_URL environment variable required for PostgreSQL")
-            return database_url
-        else:
-            raise ValueError(f"Unsupported database type: {db_config.type}")
-
-
 # Global configuration instance
 config = ConfigManager()

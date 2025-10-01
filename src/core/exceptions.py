@@ -23,21 +23,7 @@ class AuthenticationError(APIError):
     pass
 
 
-class DatabaseError(QualysAutomationError):
-    """Raised when there's a database error"""
-    pass
-
-
 class ParsingError(QualysAutomationError):
     """Raised when parsing fails (XML, CSV, etc.)"""
     pass
 
-
-class ValidationError(QualysAutomationError):
-    """Raised when data validation fails"""
-    pass
-
-
-class ReportError(QualysAutomationError):
-    """Raised when report generation or processing fails"""
-    pass
